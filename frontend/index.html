@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🌿 CropGuard AI — Disease Detection</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            leaf:  { 50:'#f0fdf4', 100:'#dcfce7', 500:'#22c55e', 600:'#16a34a', 700:'#15803d', 900:'#14532d' },
+            soil:  { 50:'#fefce8', 100:'#fef9c3', 500:'#eab308', 600:'#ca8a04' },
+            alert: { 50:'#fff7ed', 100:'#ffedd5', 500:'#f97316', 600:'#ea580c' },
+            danger:{ 50:'#fef2f2', 100:'#fee2e2', 500:'#ef4444', 600:'#dc2626' },
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    .drop-zone        { border: 2px dashed #d1fae5; transition: all .2s; }
+    .drop-zone.active { border-color: #22c55e; background: #f0fdf4; }
+    .confidence-bar   { transition: width .8s cubic-bezier(.34,1.56,.64,1); }
+    .card-hover       { transition: transform .15s, box-shadow .15s; }
+    .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+    .severity-none     { background:#dcfce7; color:#15803d; }
+    .severity-low      { background:#fef9c3; color:#854d0e; }
+    .severity-moderate { background:#ffedd5; color:#9a3412; }
+    .severity-severe   { background:#fee2e2; color:#991b1b; }
+    .severity-lethal   { background:#1c1917; color:#fca5a5; }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    .spinner { animation: spin 1s linear infinite; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+    .fade-in { animation: fadeIn .35s ease forwards; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+<!-- ── Header ─────────────────────────────────────────── -->
+<header class="bg-white border-b border-gray-100 sticky top-0 z-40">
+  <div class="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl">🌿</span>
+      <span class="font-semibold text-gray-900">CropGuard <span class="text-leaf-600 font-bold">AI</span></span>
+      <span class="ml-2 text-xs bg-leaf-100 text-leaf-700 px-2 py-0.5 rounded-full font-medium">YOLOv8</span>
+    </div>
+    <nav class="hidden sm:flex items-center gap-6 text-sm text-gray-500">
+      <a href="#upload"  class="hover:text-leaf-600 transition-colors">Detect</a>
+      <a href="#howit"   class="hover:text-leaf-600 transition-colors">How It Works</a>
+      <a href="#crops"   class="hover:text-leaf-600 transition-colors">Supported Crops</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ── Hero ─────────────────────────────────────────────── -->
+<section class="bg-gradient-to-b from-leaf-50 to-white pt-14 pb-10 px-4 text-center">
+  <div class="max-w-2xl mx-auto">
+    <h1 class="text-4xl sm:text-5xl font-bold text-gray-900 leading-tight mb-4">
+      Detect Crop Diseases<br><span class="text-leaf-600">Instantly with AI</span>
+    </h1>
+    <p class="text-lg text-gray-500 mb-8">
+      Upload a photo of your plant. Our YOLOv8 model identifies diseases across
+      <strong class="text-gray-700">14 crops</strong> and <strong class="text-gray-700">38 disease classes</strong>
+      — trained on 54,000+ PlantVillage images.
+    </p>
+    <div class="flex justify-center gap-4 flex-wrap text-sm">
+      <div class="bg-white border border-gray-200 rounded-full px-4 py-1.5 text-gray-600 shadow-sm">🍅 Tomato</div>
+      <div class="bg-white border border-gray-200 rounded-full px-4 py-1.5 text-gray-600 shadow-sm">🥔 Potato</div>
+      <div class="bg-white border border-gray-200 rounded-full px-4 py-1.5 text-gray-600 shadow-sm">🌽 Corn</div>
+      <div class="bg-white border border-gray-200 rounded-full px-4 py-1.5 text-gray-600 shadow-sm">🍎 Apple</div>
+      <div class="bg-white border border-gray-200 rounded-full px-4 py-1.5 text-gray-600 shadow-sm">🍇 Grape</div>
+      <div class="bg-white border border-gray-200 rounded-full px-4 py-1.5 text-gray-600 shadow-sm">+ 9 more</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Main App ──────────────────────────────────────────── -->
+<main class="max-w-5xl mx-auto px-4 py-10" id="upload">
+  <div class="grid lg:grid-cols-2 gap-8">
+
+    <!-- Upload Panel -->
+    <div>
+      <h2 class="text-xl font-semibold text-gray-800 mb-4">Upload Plant Image</h2>
+
+      <!-- Drop Zone -->
+      <div id="dropZone"
+           class="drop-zone rounded-2xl p-8 text-center cursor-pointer bg-white mb-4"
+           onclick="document.getElementById('fileInput').click()"
+           ondragover="onDragOver(event)"
+           ondragleave="onDragLeave(event)"
+           ondrop="onDrop(event)">
+        <div id="dropContent">
+          <div class="text-5xl mb-3">📷</div>
+          <p class="font-medium text-gray-700 mb-1">Drop your plant photo here</p>
+          <p class="text-sm text-gray-400">or click to browse · JPG, PNG, WEBP · max 10MB</p>
+        </div>
+        <div id="previewWrapper" class="hidden">
+          <img id="preview" class="max-h-64 mx-auto rounded-xl object-contain" alt="Preview"/>
+          <p class="text-sm text-gray-500 mt-2" id="previewName"></p>
+        </div>
+      </div>
+      <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" onchange="onFileSelect(event)"/>
+
+      <!-- API URL -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-600 mb-1">API Endpoint</label>
+        <input id="apiUrl" type="text" value="http://localhost:8000"
+               class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-leaf-500"/>
+      </div>
+
+      <!-- Analyze Button -->
+      <button id="analyzeBtn" onclick="analyze()"
+              class="w-full bg-leaf-600 hover:bg-leaf-700 active:scale-95 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              disabled>
+        <span id="btnIcon">🔍</span>
+        <span id="btnText">Analyze Plant</span>
+      </button>
+
+      <!-- Tips -->
+      <div class="mt-6 bg-soil-50 border border-soil-100 rounded-xl p-4">
+        <p class="text-sm font-semibold text-soil-600 mb-2">📸 Photo Tips for Best Results</p>
+        <ul class="text-sm text-gray-600 space-y-1">
+          <li>✓ Focus on affected leaf area</li>
+          <li>✓ Use natural daylight</li>
+          <li>✓ Include both healthy and diseased portions</li>
+          <li>✓ Avoid blurry or dark images</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div id="resultsPanel">
+      <h2 class="text-xl font-semibold text-gray-800 mb-4">Detection Results</h2>
+
+      <!-- Empty state -->
+      <div id="emptyState" class="bg-white rounded-2xl border border-gray-100 p-12 text-center">
+        <div class="text-5xl mb-3">🌱</div>
+        <p class="text-gray-500">Upload a plant image to see disease analysis</p>
+      </div>
+
+      <!-- Loading state -->
+      <div id="loadingState" class="hidden bg-white rounded-2xl border border-gray-100 p-12 text-center">
+        <div class="w-12 h-12 border-4 border-leaf-200 border-t-leaf-600 rounded-full spinner mx-auto mb-4"></div>
+        <p class="text-gray-600 font-medium">Analyzing your plant...</p>
+        <p class="text-sm text-gray-400 mt-1">YOLOv8 is inspecting 38 disease classes</p>
+      </div>
+
+      <!-- Error state -->
+      <div id="errorState" class="hidden bg-danger-50 border border-danger-100 rounded-2xl p-6">
+        <p class="font-semibold text-danger-700">⚠️ Analysis Failed</p>
+        <p id="errorMsg" class="text-sm text-danger-600 mt-1"></p>
+        <p class="text-xs text-gray-500 mt-3">Make sure the backend is running at the API endpoint above.</p>
+      </div>
+
+      <!-- Results -->
+      <div id="resultsContent" class="hidden space-y-4 fade-in">
+
+        <!-- Top result banner -->
+        <div id="topResult" class="rounded-2xl p-5 border"></div>
+
+        <!-- Annotated image (if detection model) -->
+        <div id="annotatedWrapper" class="hidden">
+          <p class="text-sm font-medium text-gray-600 mb-2">Annotated Image</p>
+          <img id="annotatedImg" class="rounded-xl w-full object-contain border border-gray-100" alt="Annotated"/>
+        </div>
+
+        <!-- All predictions -->
+        <div id="predictionList"></div>
+
+        <!-- Treatment card -->
+        <div id="treatmentCard" class="hidden bg-white rounded-2xl border border-gray-100 p-5"></div>
+
+        <!-- Scan again -->
+        <button onclick="resetUI()"
+                class="w-full border border-gray-200 text-gray-600 hover:bg-gray-50 py-2.5 rounded-xl text-sm font-medium transition-colors">
+          ↩ Scan Another Plant
+        </button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ── How It Works ─────────────────────────────────────── -->
+<section class="bg-white border-t border-gray-100 py-16 px-4" id="howit">
+  <div class="max-w-4xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-900 text-center mb-10">How It Works</h2>
+    <div class="grid sm:grid-cols-4 gap-6 text-center">
+      <div class="card-hover bg-leaf-50 rounded-2xl p-6">
+        <div class="text-3xl mb-3">📷</div>
+        <h3 class="font-semibold text-gray-800 mb-1">1. Upload</h3>
+        <p class="text-sm text-gray-500">Take a photo of the affected plant leaf or fruit</p>
+      </div>
+      <div class="card-hover bg-blue-50 rounded-2xl p-6">
+        <div class="text-3xl mb-3">⚙️</div>
+        <h3 class="font-semibold text-gray-800 mb-1">2. Preprocess</h3>
+        <p class="text-sm text-gray-500">FastAPI resizes and normalizes the image</p>
+      </div>
+      <div class="card-hover bg-purple-50 rounded-2xl p-6">
+        <div class="text-3xl mb-3">🧠</div>
+        <h3 class="font-semibold text-gray-800 mb-1">3. Inference</h3>
+        <p class="text-sm text-gray-500">YOLOv8 model identifies disease class & confidence</p>
+      </div>
+      <div class="card-hover bg-amber-50 rounded-2xl p-6">
+        <div class="text-3xl mb-3">💊</div>
+        <h3 class="font-semibold text-gray-800 mb-1">4. Treat</h3>
+        <p class="text-sm text-gray-500">Get treatment recommendations and prevention tips</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Supported Crops ──────────────────────────────────── -->
+<section class="bg-gray-50 py-16 px-4" id="crops">
+  <div class="max-w-4xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-900 text-center mb-2">14 Crops · 38 Disease Classes</h2>
+    <p class="text-center text-gray-500 mb-10">Trained on the PlantVillage benchmark dataset</p>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🍅</div><p class="font-medium text-sm">Tomato</p><p class="text-xs text-gray-400">10 classes</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🥔</div><p class="font-medium text-sm">Potato</p><p class="text-xs text-gray-400">3 classes</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🌽</div><p class="font-medium text-sm">Corn</p><p class="text-xs text-gray-400">4 classes</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🍎</div><p class="font-medium text-sm">Apple</p><p class="text-xs text-gray-400">4 classes</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🍇</div><p class="font-medium text-sm">Grape</p><p class="text-xs text-gray-400">4 classes</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🍑</div><p class="font-medium text-sm">Peach</p><p class="text-xs text-gray-400">2 classes</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🫑</div><p class="font-medium text-sm">Bell Pepper</p><p class="text-xs text-gray-400">2 classes</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🍊</div><p class="font-medium text-sm">Orange</p><p class="text-xs text-gray-400">1 class</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🍓</div><p class="font-medium text-sm">Strawberry</p><p class="text-xs text-gray-400">2 classes</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🫐</div><p class="font-medium text-sm">Blueberry</p><p class="text-xs text-gray-400">1 class</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🌸</div><p class="font-medium text-sm">Cherry</p><p class="text-xs text-gray-400">2 classes</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🥦</div><p class="font-medium text-sm">Squash</p><p class="text-xs text-gray-400">1 class</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🌿</div><p class="font-medium text-sm">Soybean</p><p class="text-xs text-gray-400">1 class</p>
+      </div>
+      <div class="bg-white rounded-xl p-4 border border-gray-100 text-center card-hover">
+        <div class="text-2xl mb-1">🍇</div><p class="font-medium text-sm">Raspberry</p><p class="text-xs text-gray-400">1 class</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ─────────────────────────────────────────── -->
+<footer class="bg-gray-900 text-gray-400 py-8 px-4 text-center text-sm">
+  <p>🌿 CropGuard AI · Built with YOLOv8 + FastAPI + PlantVillage Dataset</p>
+  <p class="mt-1">For research and educational use · Always consult an agronomist for field decisions</p>
+</footer>
+
+<script>
+  let selectedFile = null;
+
+  // ── Drag & Drop ──────────────────────────────────────
+  function onDragOver(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.add('active');
+  }
+  function onDragLeave(e) {
+    document.getElementById('dropZone').classList.remove('active');
+  }
+  function onDrop(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.remove('active');
+    const file = e.dataTransfer.files[0];
+    if (file) loadFile(file);
+  }
+  function onFileSelect(e) {
+    const file = e.target.files[0];
+    if (file) loadFile(file);
+  }
+
+  function loadFile(file) {
+    selectedFile = file;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      document.getElementById('preview').src = e.target.result;
+      document.getElementById('previewName').textContent = file.name + ' · ' + (file.size / 1024).toFixed(0) + ' KB';
+      document.getElementById('dropContent').classList.add('hidden');
+      document.getElementById('previewWrapper').classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+
+  // ── Severity helpers ─────────────────────────────────
+  const severityClass = {
+    'None':    'severity-none',
+    'Low':     'severity-low',
+    'Low-Moderate': 'severity-low',
+    'Moderate':'severity-moderate',
+    'Moderate-Severe':'severity-moderate',
+    'Severe':  'severity-severe',
+    'Lethal':  'severity-lethal',
+  };
+
+  const severityIcon = {
+    'None':    '✅',
+    'Low':     '🟡',
+    'Low-Moderate':'🟡',
+    'Moderate':'🟠',
+    'Moderate-Severe':'🔴',
+    'Severe':  '🔴',
+    'Lethal':  '☠️',
+  };
+
+  function formatClassName(name) {
+    return name.replace(/___/g, ' → ').replace(/_/g, ' ');
+  }
+
+  // ── Analyze ──────────────────────────────────────────
+  async function analyze() {
+    if (!selectedFile) return;
+
+    const apiUrl = document.getElementById('apiUrl').value.trim().replace(/\/$/, '');
+
+    // UI: loading
+    document.getElementById('emptyState').classList.add('hidden');
+    document.getElementById('errorState').classList.add('hidden');
+    document.getElementById('resultsContent').classList.add('hidden');
+    document.getElementById('loadingState').classList.remove('hidden');
+    document.getElementById('analyzeBtn').disabled = true;
+    document.getElementById('btnText').textContent = 'Analyzing...';
+    document.getElementById('btnIcon').textContent = '⏳';
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      const resp = await fetch(`${apiUrl}/predict`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail || 'Server error');
+      }
+
+      const data = await resp.json();
+      renderResults(data);
+
+    } catch (err) {
+      document.getElementById('loadingState').classList.add('hidden');
+      document.getElementById('errorState').classList.remove('hidden');
+      document.getElementById('errorMsg').textContent = err.message;
+    } finally {
+      document.getElementById('analyzeBtn').disabled = false;
+      document.getElementById('btnText').textContent = 'Analyze Plant';
+      document.getElementById('btnIcon').textContent = '🔍';
+    }
+  }
+
+  function renderResults(data) {
+    document.getElementById('loadingState').classList.add('hidden');
+
+    if (!data.success) {
+      const top = document.getElementById('topResult');
+      top.className = 'rounded-2xl p-5 border bg-soil-50 border-soil-100';
+      top.innerHTML = `
+        <div class="text-4xl mb-2">⚠️</div>
+        <h3 class="text-xl font-bold text-soil-600">Unsupported or unclear image</h3>
+        <p class="text-sm text-gray-700 mt-1">${data.message || 'Please upload a clear leaf image from the supported crops.'}</p>`;
+      document.getElementById('predictionList').innerHTML = '';
+      document.getElementById('treatmentCard').classList.add('hidden');
+      document.getElementById('annotatedWrapper').classList.add('hidden');
+      document.getElementById('resultsContent').classList.remove('hidden');
+      return;
+    }
+
+    if (data.predictions.length === 0) {
+      const top = document.getElementById('topResult');
+      top.className = 'rounded-2xl p-5 border bg-leaf-50 border-leaf-200';
+      top.innerHTML = `
+        <div class="text-4xl mb-2">✅</div>
+        <h3 class="text-xl font-bold text-leaf-800">Plant Appears Healthy!</h3>
+        <p class="text-sm text-leaf-700 mt-1">No disease detected. Keep up the good care!</p>`;
+      document.getElementById('predictionList').innerHTML = '';
+      document.getElementById('treatmentCard').classList.add('hidden');
+      document.getElementById('annotatedWrapper').classList.add('hidden');
+      document.getElementById('resultsContent').classList.remove('hidden');
+      return;
+    }
+
+    const top = data.predictions[0];
+
+    // Top banner
+    const isHealthy = top.class_name.includes('healthy');
+    const banner = document.getElementById('topResult');
+    banner.className = `rounded-2xl p-5 border ${isHealthy ? 'bg-leaf-50 border-leaf-200' : 'bg-danger-50 border-danger-200'}`;
+    banner.innerHTML = `
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="text-xs font-medium ${isHealthy ? 'text-leaf-600' : 'text-danger-600'} mb-1">Top Detection</p>
+          <h3 class="text-lg font-bold ${isHealthy ? 'text-leaf-900' : 'text-danger-900'}">${formatClassName(top.class_name)}</h3>
+          <p class="text-sm ${isHealthy ? 'text-leaf-700' : 'text-danger-700'} mt-0.5">${top.description || ''}</p>
+        </div>
+        <div class="text-right shrink-0">
+          <span class="text-3xl font-bold ${isHealthy ? 'text-leaf-700' : 'text-danger-700'}">${top.confidence_pct}</span>
+          <p class="text-xs text-gray-500">confidence</p>
+        </div>
+      </div>
+      <div class="mt-3">
+        <span class="text-xs font-semibold px-2.5 py-1 rounded-full ${severityClass[top.severity] || 'severity-moderate'}">
+          ${severityIcon[top.severity] || '⚠️'} ${top.severity} severity
+        </span>
+      </div>`;
+
+    // Annotated image
+    if (data.annotated_image) {
+      document.getElementById('annotatedImg').src = 'data:image/jpeg;base64,' + data.annotated_image;
+      document.getElementById('annotatedWrapper').classList.remove('hidden');
+    } else {
+      document.getElementById('annotatedWrapper').classList.add('hidden');
+    }
+
+    // All predictions list
+    const list = document.getElementById('predictionList');
+    list.innerHTML = data.predictions.length > 1
+      ? `<h3 class="font-semibold text-gray-700 mb-2 text-sm">All Detections</h3>` : '';
+
+    data.predictions.forEach((pred, i) => {
+      const bar = Math.round(pred.confidence * 100);
+      const colors = ['bg-leaf-500','bg-blue-500','bg-purple-500','bg-amber-500','bg-pink-500'];
+      list.innerHTML += `
+        <div class="bg-white rounded-xl border border-gray-100 p-4 ${i > 0 ? 'mt-2' : ''}">
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-sm font-medium text-gray-800">${formatClassName(pred.class_name)}</span>
+            <span class="text-sm font-bold text-gray-700">${pred.confidence_pct}</span>
+          </div>
+          <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div class="h-full ${colors[i % colors.length]} confidence-bar rounded-full" style="width:${bar}%"></div>
+          </div>
+        </div>`;
+    });
+
+    // Treatment card
+    if (!isHealthy && (top.treatment.length > 0 || top.prevention.length > 0)) {
+      const tc = document.getElementById('treatmentCard');
+      tc.classList.remove('hidden');
+      tc.innerHTML = `
+        <h3 class="font-semibold text-gray-800 mb-4">💊 Treatment & Prevention</h3>
+        ${top.treatment.length > 0 ? `
+          <div class="mb-4">
+            <p class="text-xs font-semibold text-danger-600 uppercase tracking-wide mb-2">Immediate Treatment</p>
+            <ul class="space-y-1.5">
+              ${top.treatment.map(t => `<li class="text-sm text-gray-700 flex gap-2"><span class="text-danger-500 mt-0.5">→</span>${t}</li>`).join('')}
+            </ul>
+          </div>` : ''}
+        ${top.prevention.length > 0 ? `
+          <div class="border-t border-gray-100 pt-4">
+            <p class="text-xs font-semibold text-leaf-600 uppercase tracking-wide mb-2">Prevention</p>
+            <ul class="space-y-1.5">
+              ${top.prevention.map(p => `<li class="text-sm text-gray-700 flex gap-2"><span class="text-leaf-500 mt-0.5">✓</span>${p}</li>`).join('')}
+            </ul>
+          </div>` : ''}
+        <div class="mt-4 text-xs text-gray-400 border-t border-gray-100 pt-3">
+          ⚠️ Always consult a local agronomist before applying treatments.
+        </div>`;
+    }
+
+    document.getElementById('resultsContent').classList.remove('hidden');
+  }
+
+  function resetUI() {
+    selectedFile = null;
+    document.getElementById('fileInput').value = '';
+    document.getElementById('dropContent').classList.remove('hidden');
+    document.getElementById('previewWrapper').classList.add('hidden');
+    document.getElementById('resultsContent').classList.add('hidden');
+    document.getElementById('emptyState').classList.remove('hidden');
+    document.getElementById('analyzeBtn').disabled = true;
+  }
+</script>
+</body>
+</html>

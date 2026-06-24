@@ -1,0 +1,7 @@
+datasets/
+PlantVillage-Dataset/
+PlantVillage-Dataset-master.zip
+dataset.zip
+.ultralytics/
+.matplotlib/
+runs/
